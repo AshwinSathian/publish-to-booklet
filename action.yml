@@ -4,7 +4,7 @@ author: "Ashwin Sathian"
 
 branding:
   icon: "upload-cloud"
-  color: "blue"
+  color: "orange"
 
 inputs:
   file:
