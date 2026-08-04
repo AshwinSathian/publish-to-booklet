@@ -51,6 +51,11 @@ jobs:
           # Move the moving major tag (e.g. v1) to this release — the
           # convention every consumer's `uses: owner/action@v1` resolves
           # against. Plain mutable tag, not itself an immutable release.
+          # Annotated tags need a committer identity — the runner has none
+          # by default (found live: the first release run failed here with
+          # "empty ident name").
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -fa "$MAJOR" -m "Update $MAJOR to v$VERSION"
           git push origin "$MAJOR" --force
 
