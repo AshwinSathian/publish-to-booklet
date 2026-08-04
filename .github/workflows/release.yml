@@ -64,4 +64,6 @@ jobs:
 
       - name: Skip (already released)
         if: steps.version_check.outputs.already_released == 'true'
-        run: echo "v${{ steps.version_check.outputs.version }} already released — bump package.json's version to release."
+        env:
+          VERSION: ${{ steps.version_check.outputs.version }}
+        run: echo "v$VERSION already released — bump package.json's version to release."
