@@ -24,6 +24,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # persist-credentials stays at its default (true) here — unlike
+          # the read-only workflows, this job pushes the moved major tag
+          # with `git push`, which needs the checkout-persisted credential.
 
       - name: Check if version already released
         id: version_check
