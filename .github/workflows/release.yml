@@ -1,0 +1,59 @@
+# Cuts a GitHub Release + moves the major version tag when package.json's
+# version is bumped on main. Marketplace re-lists automatically on release
+# publish; the moving v1 tag is what `uses: AshwinSathian/publish-to-booklet@v1`
+# consumers actually resolve.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check if version already released
+        id: version_check
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$PKG_VERSION" >/dev/null 2>&1; then
+            echo "already_released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag and GitHub Release
+        if: steps.version_check.outputs.already_released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version_check.outputs.version }}
+        run: |
+          MAJOR="v${VERSION%%.*}"
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            --latest
+
+          # Move the moving major tag (e.g. v1) to this release — the
+          # convention every consumer's `uses: owner/action@v1` resolves
+          # against. Plain mutable tag, not itself an immutable release.
+          git tag -fa "$MAJOR" -m "Update $MAJOR to v$VERSION"
+          git push origin "$MAJOR" --force
+
+      - name: Skip (already released)
+        if: steps.version_check.outputs.already_released == 'true'
+        run: echo "v${{ steps.version_check.outputs.version }} already released — bump package.json's version to release."
