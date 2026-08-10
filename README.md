@@ -34,7 +34,7 @@ Pass `page-id` to update the same page in place instead of creating a new one ea
 | Name | Required | Default | Description |
 |---|---|---|---|
 | `file` | Yes | — | Path to the Markdown file to publish |
-| `api-key` | Yes | — | Booklet API key — store as a repo secret |
+| `api-key` | Yes | — | Booklet API key (store as a repo secret) |
 | `page-id` | No | — | Existing page ID to update in-place |
 | `visibility` | No | `unlisted` | `public` or `unlisted` |
 | `base-url` | No | `https://booklet-api.ashwinsathian.com` | Booklet API base URL |
@@ -57,9 +57,9 @@ Pass `page-id` to update the same page in place instead of creating a new one ea
 npm ci
 npm run typecheck
 npm test
-npm run build   # rebuilds dist/main.js — commit the result; CI's check-dist job fails PRs that forget to
+npm run build   # rebuilds dist/main.js; commit the result, CI's check-dist job fails PRs that forget to
 ```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

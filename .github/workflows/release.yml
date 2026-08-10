@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          # persist-credentials stays at its default (true) here — unlike
+          # persist-credentials stays at its default (true) here. Unlike
           # the read-only workflows, this job pushes the moved major tag
           # with `git push`, which needs the checkout-persisted credential.
 
@@ -51,12 +51,12 @@ jobs:
             --generate-notes \
             --latest
 
-          # Move the moving major tag (e.g. v1) to this release — the
+          # Move the moving major tag (e.g. v1) to this release: the
           # convention every consumer's `uses: owner/action@v1` resolves
           # against. Plain mutable tag, not itself an immutable release.
-          # Annotated tags need a committer identity — the runner has none
-          # by default (found live: the first release run failed here with
-          # "empty ident name").
+          # Annotated tags need a committer identity, and the runner has
+          # none by default (found live: the first release run failed here
+          # with "empty ident name").
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -fa "$MAJOR" -m "Update $MAJOR to v$VERSION"
@@ -66,4 +66,4 @@ jobs:
         if: steps.version_check.outputs.already_released == 'true'
         env:
           VERSION: ${{ steps.version_check.outputs.version }}
-        run: echo "v$VERSION already released — bump package.json's version to release."
+        run: echo "v$VERSION already released. Bump package.json's version to release."

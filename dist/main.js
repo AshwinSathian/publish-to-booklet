@@ -35862,7 +35862,7 @@ async function run(deps = defaultDeps) {
   const baseUrl = core.getInput("base-url") || "https://booklet-api.ashwinsathian.com";
   core.setSecret(apiKey);
   if (!isValidVisibility(visibility)) {
-    core.setFailed(`Invalid visibility: "${visibility}" \u2014 must be "public" or "unlisted"`);
+    core.setFailed(`Invalid visibility: "${visibility}", must be "public" or "unlisted"`);
     return;
   }
   core.debug(`Publishing ${file2} to ${baseUrl}`);
@@ -35870,7 +35870,7 @@ async function run(deps = defaultDeps) {
   try {
     raw = deps.readFile((0, import_path.resolve)(process.cwd(), file2));
   } catch (e) {
-    core.setFailed(`Could not read file: ${file2} \u2014 ${e instanceof Error ? e.message : String(e)}`);
+    core.setFailed(`Could not read file: ${file2}: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
   const client = deps.createClient({ baseUrl, apiKey, source: "github-action" });

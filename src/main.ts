@@ -19,8 +19,8 @@ const defaultDeps: RunDeps = {
 };
 
 export async function run(deps: RunDeps = defaultDeps): Promise<void> {
-  // @actions/core ^3.x publishes ESM-only (no "require" export condition) —
-  // a dynamic import here goes through Node's real (ESM-aware) resolver
+  // @actions/core ^3.x publishes ESM-only (no "require" export condition).
+  // A dynamic import here goes through Node's real (ESM-aware) resolver
   // instead of the strict CJS require() this file otherwise runs under.
   const core = await import("@actions/core");
 
@@ -33,7 +33,7 @@ export async function run(deps: RunDeps = defaultDeps): Promise<void> {
   core.setSecret(apiKey);
 
   if (!isValidVisibility(visibility)) {
-    core.setFailed(`Invalid visibility: "${visibility}" — must be "public" or "unlisted"`);
+    core.setFailed(`Invalid visibility: "${visibility}", must be "public" or "unlisted"`);
     return;
   }
 
@@ -43,7 +43,7 @@ export async function run(deps: RunDeps = defaultDeps): Promise<void> {
   try {
     raw = deps.readFile(resolve(process.cwd(), file));
   } catch (e) {
-    core.setFailed(`Could not read file: ${file} — ${e instanceof Error ? e.message : String(e)}`);
+    core.setFailed(`Could not read file: ${file}: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
 

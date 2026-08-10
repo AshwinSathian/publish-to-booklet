@@ -1,6 +1,6 @@
 # Security Policy
 
-This action reads a Booklet API key from a workflow secret and sends it to the Booklet API over HTTPS — it never logs or persists it beyond the run (the key is registered with `core.setSecret` so Actions redacts it from logs).
+This action reads a Booklet API key from a workflow secret and sends it to the Booklet API over HTTPS. It never logs or persists the key beyond the run; the key is registered with `core.setSecret`, so Actions redacts it from logs.
 
 If you find a vulnerability, please report it privately rather than opening a public issue.
 
