@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Booklet questions (not this Action)
+    url: https://github.com/AshwinSathian/booklet/discussions
+    about: Questions about Booklet itself (the API, CLI, or web app) rather than this Action
+  - name: Security vulnerability
+    url: https://github.com/AshwinSathian/publish-to-booklet/security/policy
+    about: Report privately rather than as a public issue
