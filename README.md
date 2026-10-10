@@ -7,7 +7,7 @@ A GitHub Action that publishes a Markdown file to [Booklet](https://booklet.ashw
 ## Usage
 
 ```yaml
-- uses: AshwinSathian/publish-to-booklet@v1
+- uses: AshwinSathian/publish-to-booklet@v2
   id: publish
   with:
     file: CHANGELOG.md
@@ -22,12 +22,16 @@ A GitHub Action that publishes a Markdown file to [Booklet](https://booklet.ashw
 Pass `page-id` to update the same page in place instead of creating a new one each run:
 
 ```yaml
-- uses: AshwinSathian/publish-to-booklet@v1
+- uses: AshwinSathian/publish-to-booklet@v2
   with:
     file: CHANGELOG.md
     api-key: ${{ secrets.BOOKLET_API_KEY }}
     page-id: ${{ vars.BOOKLET_PAGE_ID }}
 ```
+
+### Re-running a job
+
+A new page is published with an `Idempotency-Key` made from the workflow run ID and the file path. If you re-run a failed job, Booklet returns the page the first attempt created and does not publish a second one. A new workflow run publishes a new page; pass `page-id` to keep updating one page.
 
 ## Inputs
 
@@ -45,6 +49,11 @@ Pass `page-id` to update the same page in place instead of creating a new one ea
 |---|---|
 | `url` | URL of the published page |
 | `id` | Page ID |
+
+## Upgrading from v1
+
+- v1 ignored `visibility` when it created a page, so a new page was public before Booklet 1.1.0 and unlisted after it. v2 applies the input. The default is still `unlisted`.
+- v2 needs a Booklet server at 2.0 or later for the re-run behaviour. Older servers ignore the header.
 
 ## Setup
 
