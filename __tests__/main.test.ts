@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidVisibility, run } from "../src/main";
+import { idempotencyKey, isValidVisibility, run } from "../src/main";
 
 function withInputs(inputs: Record<string, string>, fn: () => Promise<void>) {
   const keys = Object.keys(inputs).map((k) => `INPUT_${k.toUpperCase()}`);
@@ -50,8 +50,8 @@ test("run() publishes a new page when no page-id is given", async () => {
     await run({
       readFile: () => "# Hello",
       createClient: () => ({
-        publishPage: async (raw: string) => {
-          calls.push(["publish", raw]);
+        publishPage: async (raw: string, opts?: unknown) => {
+          calls.push(["publish", raw, opts]);
           return { id: "abc123", url: "https://booklet.example/abc123" } as never;
         },
         updatePage: async () => {
@@ -59,7 +59,7 @@ test("run() publishes a new page when no page-id is given", async () => {
         },
       }),
     });
-    assert.deepEqual(calls, [["publish", "# Hello"]]);
+    assert.deepEqual(calls, [["publish", "# Hello", { visibility: "unlisted", idempotencyKey: idempotencyKey("doc.md") }]]);
     assert.notEqual(process.exitCode, 1);
   });
 });
@@ -85,4 +85,14 @@ test("run() updates an existing page when page-id is given", async () => {
       assert.notEqual(process.exitCode, 1);
     },
   );
+});
+
+test("idempotencyKey is stable across attempts of one run and differs per run and file", () => {
+  const env = { GITHUB_REPOSITORY: "o/r", GITHUB_RUN_ID: "1", GITHUB_RUN_ATTEMPT: "1" };
+  const key = idempotencyKey("a.md", env);
+  assert.match(key ?? "", /^[0-9a-f]{64}$/);
+  assert.equal(idempotencyKey("a.md", { ...env, GITHUB_RUN_ATTEMPT: "2" }), key);
+  assert.notEqual(idempotencyKey("b.md", env), key);
+  assert.notEqual(idempotencyKey("a.md", { ...env, GITHUB_RUN_ID: "2" }), key);
+  assert.equal(idempotencyKey("a.md", {}), undefined);
 });

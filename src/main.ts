@@ -1,9 +1,22 @@
+import { createHash } from "crypto";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { createClient, BookletApiError, type ClientOptions, type BookletClient } from "booklet-api-client";
 
 export function isValidVisibility(value: string): value is "public" | "unlisted" {
   return value === "public" || value === "unlisted";
+}
+
+/**
+ * One key per workflow run and file, so re-running a failed job (same run ID,
+ * new attempt) returns the page the first attempt created instead of
+ * publishing a second one. Undefined outside GitHub Actions.
+ */
+export function idempotencyKey(file: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (!env.GITHUB_RUN_ID) return undefined;
+  return createHash("sha256")
+    .update(`${env.GITHUB_REPOSITORY ?? ""}\n${env.GITHUB_RUN_ID}\n${file}`)
+    .digest("hex");
 }
 
 export type PublishResult = { id: string; url: string };
@@ -47,11 +60,11 @@ export async function run(deps: RunDeps = defaultDeps): Promise<void> {
     return;
   }
 
-  const client = deps.createClient({ baseUrl, apiKey, source: "github-action" });
+  const client = deps.createClient({ baseUrl, apiKey, source: "github-action", retryOnRateLimit: true });
 
   let result: PublishResult;
   try {
-    result = pageId ? await client.updatePage(pageId, { raw, visibility }) : await client.publishPage(raw);
+    result = pageId ? await client.updatePage(pageId, { raw, visibility }) : await client.publishPage(raw, { visibility, idempotencyKey: idempotencyKey(file) });
   } catch (e) {
     const message = e instanceof BookletApiError ? e.message : e instanceof Error ? e.message : String(e);
     core.setFailed(`Publish failed: ${message}`);

@@ -21200,10 +21200,12 @@ var init_core = __esm({
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
+  idempotencyKey: () => idempotencyKey,
   isValidVisibility: () => isValidVisibility,
   run: () => run
 });
 module.exports = __toCommonJS(main_exports);
+var import_crypto = require("crypto");
 var import_fs2 = require("fs");
 var import_path = require("path");
 
@@ -35722,8 +35724,19 @@ function date4(params) {
 config(en_default());
 
 // node_modules/booklet-api-client/dist/index.js
+var MAX_RAW_CHARS = 2e5;
 var VisibilitySchema = external_exports.enum(["public", "unlisted"]);
-var PageListItemSchema = external_exports.object({
+var EXAMPLE_PAGE = {
+  id: "Ab3k91QxZp",
+  title: "Release Notes v2.1",
+  slug: "release-notes-v2-1",
+  visibility: "unlisted",
+  view_count: 42,
+  url: "https://booklet.ashwinsathian.com/p/release-notes-v2-1",
+  created_at: "2026-04-29T10:00:00.000Z",
+  updated_at: "2026-04-29T12:00:00.000Z"
+};
+var pageFields = {
   id: external_exports.string(),
   title: external_exports.string().nullable(),
   slug: external_exports.string().nullable(),
@@ -35732,58 +35745,89 @@ var PageListItemSchema = external_exports.object({
   url: external_exports.string(),
   created_at: external_exports.string(),
   updated_at: external_exports.string()
-});
+};
+var PageListItemSchema = external_exports.object(pageFields).meta({ examples: [EXAMPLE_PAGE] });
 var ListPagesResponseSchema = external_exports.object({
   pages: external_exports.array(PageListItemSchema),
   total: external_exports.number(),
   limit: external_exports.number(),
-  offset: external_exports.number()
+  offset: external_exports.number(),
+  /** Pass as `cursor` to get the next page; null on the last page. Absent on servers before 2.0. */
+  next_cursor: external_exports.string().nullable().optional()
+}).meta({
+  examples: [{ pages: [EXAMPLE_PAGE], total: 57, limit: 20, offset: 0, next_cursor: "WyIyMDI2LTA0LTI5VDEwOjAwOjAwLjAwMFoiLCJBYjNrOTFReFpwIl0" }]
 });
 var PublishRequestSchema = external_exports.object({
-  raw: external_exports.string().min(1)
-});
+  raw: external_exports.string().min(1).max(MAX_RAW_CHARS),
+  settings: external_exports.object({ width: external_exports.enum(["normal", "wide"]) }).partial().optional(),
+  /** Overrides frontmatter `visibility`. A new page is unlisted unless this or frontmatter says public. */
+  visibility: VisibilitySchema.optional()
+}).meta({ examples: [{ raw: "# Release Notes\n\nWhat changed...", visibility: "unlisted" }] });
 var PublishResponseSchema = external_exports.object({
   id: external_exports.string(),
-  url: external_exports.string()
-});
+  url: external_exports.string(),
+  /** Present when a requested slug could not be applied. */
+  warning: external_exports.string().optional()
+}).meta({ examples: [{ id: "Ab3k91QxZp", url: "https://booklet.ashwinsathian.com/p/Ab3k91QxZp" }] });
 var PatchPageRequestSchema = external_exports.object({
-  raw: external_exports.string().optional(),
+  raw: external_exports.string().max(MAX_RAW_CHARS).optional(),
   slug: external_exports.string().nullable().optional(),
   visibility: VisibilitySchema.optional()
+}).meta({
+  examples: [
+    { raw: "# Updated content\n\n..." },
+    { slug: "my-custom-slug" },
+    { slug: null },
+    { visibility: "public" }
+  ]
 });
 var PatchPageResponseSchema = external_exports.object({
   id: external_exports.string(),
   url: external_exports.string(),
   updated_at: external_exports.string().optional()
+}).meta({
+  examples: [{ id: "Ab3k91QxZp", url: "https://booklet.ashwinsathian.com/p/Ab3k91QxZp", updated_at: "2026-04-29T12:00:00.000Z" }]
 });
-var PageDetailResponseSchema = external_exports.object({
-  id: external_exports.string(),
-  title: external_exports.string().nullable(),
-  slug: external_exports.string().nullable(),
-  visibility: VisibilitySchema,
-  view_count: external_exports.number(),
-  url: external_exports.string(),
-  created_at: external_exports.string(),
-  updated_at: external_exports.string(),
-  raw: external_exports.string().nullable()
+var PageDetailResponseSchema = external_exports.object({ ...pageFields, raw: external_exports.string().nullable() }).meta({ examples: [{ ...EXAMPLE_PAGE, raw: "# Release Notes v2.1\n\nWhat changed..." }] });
+var DeletePageResponseSchema = external_exports.object({ ok: external_exports.literal(true) }).meta({ examples: [{ ok: true }] });
+var ApiErrorSchema = external_exports.looseObject({
+  error: external_exports.string(),
+  type: external_exports.string().optional(),
+  title: external_exports.string().optional(),
+  status: external_exports.number().optional(),
+  detail: external_exports.string().optional(),
+  code: external_exports.string().optional()
+}).meta({
+  examples: [
+    {
+      type: "about:blank",
+      title: "Content Too Large",
+      status: 413,
+      detail: "Document is too large. The limit is 200,000 characters; this one has 200,001.",
+      error: "Document is too large. The limit is 200,000 characters; this one has 200,001.",
+      code: "DOCUMENT_TOO_LARGE",
+      limit: "characters",
+      max: 2e5,
+      actual: 200001
+    }
+  ]
 });
-var DeletePageResponseSchema = external_exports.object({
-  ok: external_exports.literal(true)
-});
-var ApiErrorSchema = external_exports.object({
-  error: external_exports.string()
-});
+var MAX_RETRY_AFTER_S = 60;
 var BookletApiError = class extends Error {
-  constructor(message, status) {
+  constructor(message, status, problem, retryAfter) {
     super(message);
     this.status = status;
+    this.problem = problem;
+    this.retryAfter = retryAfter;
     this.name = "BookletApiError";
   }
   status;
+  problem;
+  retryAfter;
 };
 function createClient(options) {
-  const { baseUrl, apiKey, source, fetchTimeoutMs = 15e3 } = options;
-  async function request(path6, init) {
+  const { baseUrl, apiKey, source, fetchTimeoutMs = 15e3, retryOnRateLimit = false } = options;
+  async function request(path6, init, mayRetry = retryOnRateLimit) {
     let res;
     try {
       res = await fetch(`${baseUrl}${path6}`, {
@@ -35806,48 +35850,130 @@ function createClient(options) {
     } catch {
     }
     if (!res.ok) {
-      const message = body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : `HTTP ${res.status}`;
-      throw new BookletApiError(message, res.status);
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const hasRetryAfter = res.status === 429 && Number.isFinite(retryAfter) && retryAfter > 0;
+      if (hasRetryAfter && mayRetry && retryAfter <= MAX_RETRY_AFTER_S) {
+        await new Promise((r) => setTimeout(r, retryAfter * 1e3));
+        return request(path6, init, false);
+      }
+      const problem = body && typeof body === "object" ? body : void 0;
+      const message = typeof problem?.error === "string" ? problem.error : `HTTP ${res.status}`;
+      throw new BookletApiError(message, res.status, problem, hasRetryAfter ? retryAfter : void 0);
     }
-    return body;
+    return { body, headers: res.headers };
   }
   return {
     async listPages(params) {
-      const query = new URLSearchParams();
-      if (params?.limit) query.set("limit", String(params.limit));
-      if (params?.offset) query.set("offset", String(params.offset));
-      const qs = query.toString();
-      const body = await request(`/api/v1/pages${qs ? `?${qs}` : ""}`);
+      const qp = new URLSearchParams();
+      if (params?.limit) qp.set("limit", String(params.limit));
+      if (params?.offset) qp.set("offset", String(params.offset));
+      if (params?.cursor) qp.set("cursor", params.cursor);
+      if (params?.query) qp.set("q", params.query);
+      if (params?.tag) qp.set("tag", params.tag);
+      const qs = qp.toString();
+      const { body } = await request(`/api/v1/pages${qs ? `?${qs}` : ""}`);
       return ListPagesResponseSchema.parse(body);
     },
-    async publishPage(raw) {
-      const body = await request("/api/v1/publish", {
+    /** Every page, walking `next_cursor` until the list ends. */
+    async listAllPages(params) {
+      const all = [];
+      let cursor;
+      do {
+        const page = await this.listPages({ ...params, limit: 100, ...cursor ? { cursor } : {} });
+        all.push(...page.pages);
+        cursor = page.next_cursor ?? void 0;
+      } while (cursor);
+      return all;
+    },
+    async publishPage(raw, opts) {
+      const { body } = await request("/api/v1/publish", {
         method: "POST",
-        body: JSON.stringify({ raw })
+        body: JSON.stringify({ raw, ...opts?.visibility ? { visibility: opts.visibility } : {} }),
+        ...opts?.idempotencyKey ? { headers: { "Idempotency-Key": opts.idempotencyKey } } : {}
       });
       return PublishResponseSchema.parse(body);
     },
-    async updatePage(id, patch) {
-      const body = await request(`/api/v1/pages/${encodeURIComponent(id)}`, {
+    /** `ifMatch`: apply only if the page still has this ETag (412 otherwise). */
+    async updatePage(id, patch, opts) {
+      const { body } = await request(`/api/v1/pages/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        body: JSON.stringify(patch)
+        body: JSON.stringify(patch),
+        ...opts?.ifMatch ? { headers: { "If-Match": opts.ifMatch } } : {}
       });
       return PatchPageResponseSchema.parse(body);
     },
+    /** `id` may be a page ID or a custom slug. `etag` is null on servers before 2.0. */
     async getPage(id) {
-      const body = await request(`/api/v1/pages/${encodeURIComponent(id)}`);
-      return PageDetailResponseSchema.parse(body);
+      const { body, headers } = await request(`/api/v1/pages/${encodeURIComponent(id)}`);
+      return { ...PageDetailResponseSchema.parse(body), etag: headers.get("etag") };
     },
-    async deletePage(id) {
-      const body = await request(`/api/v1/pages/${encodeURIComponent(id)}`, { method: "DELETE" });
+    async deletePage(id, opts) {
+      const { body } = await request(`/api/v1/pages/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        ...opts?.ifMatch ? { headers: { "If-Match": opts.ifMatch } } : {}
+      });
       return DeletePageResponseSchema.parse(body);
     }
   };
 }
+var WebhookEventSchema = external_exports.enum(["page.published", "page.updated"]);
+var WebhookSchema = external_exports.object({
+  id: external_exports.string(),
+  url: external_exports.string(),
+  events: external_exports.array(WebhookEventSchema),
+  created_at: external_exports.string(),
+  last_triggered_at: external_exports.string().nullable()
+});
+var SCHEMAS = {
+  PublishRequest: PublishRequestSchema,
+  PublishResponse: PublishResponseSchema,
+  PatchPageRequest: PatchPageRequestSchema,
+  PatchPageResponse: PatchPageResponseSchema,
+  PageDetail: PageDetailResponseSchema,
+  ListPagesResponse: ListPagesResponseSchema,
+  DeletePageResponse: DeletePageResponseSchema,
+  Problem: ApiErrorSchema,
+  WebhookList: external_exports.object({ webhooks: external_exports.array(WebhookSchema) }).meta({
+    examples: [
+      {
+        webhooks: [
+          {
+            id: "Wk9xZ2mP1q",
+            url: "https://hooks.example.com/booklet",
+            events: ["page.published", "page.updated"],
+            created_at: "2026-05-01T10:00:00.000Z",
+            last_triggered_at: "2026-05-15T14:32:00.000Z"
+          }
+        ]
+      }
+    ]
+  }),
+  CreateWebhookRequest: external_exports.object({ url: external_exports.string(), events: external_exports.array(WebhookEventSchema).optional() }).meta({ examples: [{ url: "https://hooks.example.com/booklet", events: ["page.published", "page.updated"] }] }),
+  CreateWebhookResponse: external_exports.object({ id: external_exports.string(), url: external_exports.string(), events: external_exports.array(WebhookEventSchema), secret: external_exports.string() }).meta({
+    examples: [{ id: "Wk9xZ2mP1q", url: "https://hooks.example.com/booklet", events: ["page.published"], secret: "<shown once>" }]
+  }),
+  WebhookDelivery: external_exports.object({ event: WebhookEventSchema, page_id: external_exports.string(), page_url: external_exports.string(), title: external_exports.string().nullable(), published_at: external_exports.string() }).meta({
+    examples: [
+      {
+        event: "page.published",
+        page_id: "Ab3k91QxZp",
+        page_url: "https://booklet.ashwinsathian.com/p/Ab3k91QxZp",
+        title: "Incident Report: Auth Service",
+        published_at: "2026-05-19T08:32:00.000Z"
+      }
+    ]
+  })
+};
 
 // src/main.ts
 function isValidVisibility(value) {
   return value === "public" || value === "unlisted";
+}
+function idempotencyKey(file2, env = process.env) {
+  if (!env.GITHUB_RUN_ID) return void 0;
+  return (0, import_crypto.createHash)("sha256").update(`${env.GITHUB_REPOSITORY ?? ""}
+${env.GITHUB_RUN_ID}
+${file2}`).digest("hex");
 }
 var defaultDeps = {
   readFile: (path6) => (0, import_fs2.readFileSync)(path6, "utf-8"),
@@ -35873,10 +35999,10 @@ async function run(deps = defaultDeps) {
     core.setFailed(`Could not read file: ${file2}: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
-  const client = deps.createClient({ baseUrl, apiKey, source: "github-action" });
+  const client = deps.createClient({ baseUrl, apiKey, source: "github-action", retryOnRateLimit: true });
   let result;
   try {
-    result = pageId ? await client.updatePage(pageId, { raw, visibility }) : await client.publishPage(raw);
+    result = pageId ? await client.updatePage(pageId, { raw, visibility }) : await client.publishPage(raw, { visibility, idempotencyKey: idempotencyKey(file2) });
   } catch (e) {
     const message = e instanceof BookletApiError ? e.message : e instanceof Error ? e.message : String(e);
     core.setFailed(`Publish failed: ${message}`);
@@ -35891,6 +36017,7 @@ if (require.main === module) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  idempotencyKey,
   isValidVisibility,
   run
 });
